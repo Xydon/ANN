@@ -1,0 +1,188 @@
+void test() {
+	MatrixXd layer1Matrix(7, 4), layer1Bias(1, 7), layer1In(1, 7), layer1Del(1, 7);
+	MatrixXd layer2Matrix(3, 7), layer2Bias(1, 3), layer2In(1, 3), layer2Del(1, 3);
+	MatrixXd layer3Matrix(1, 3), layer3Bias(1, 1), layer3In(1, 1), layer3Del(1, 1);
+
+	layer1Matrix = MatrixXd::Random(7, 4);
+	layer2Matrix = MatrixXd::Random(3, 7);
+	layer3Matrix = MatrixXd::Random(1, 3);
+
+	layer1Bias = MatrixXd::Random(1, 7);
+	layer2Bias = MatrixXd::Random(1, 3);
+	layer3Bias = MatrixXd::Random(1, 1);
+
+	MatrixXd dataset(6, 4);
+	dataset << 1, 2, 3, 4,
+		1, 2, 5, 2,
+		1, 6, 3, 2,
+		-1, -2, -3, -4,
+		-5, -4, -10, -39,
+		-2, -20, -3, -5;
+
+	for (int num = 0; num < 100; ++num)
+		for (int iter = 0; iter < 6; ++iter) {
+			MatrixXd data = dataset.row(iter);
+
+			MatrixXd layer1Output(1, 7);
+			// layer 1 
+			for (int i = 0; i < 7; ++i) {
+				MatrixXd weight = layer1Matrix.row(i);
+				layer1Output(i) = (data * weight.transpose()).sum() + layer1Bias(i);
+				layer1In(i) = layer1Output(i);
+				layer1Output(i) = sigmoid(layer1Output(i));
+			}
+
+			MatrixXd layer2Output(1, 3);
+			for (int i = 0; i < 3; ++i) {
+				MatrixXd weight = layer2Matrix.row(i).transpose();
+				layer2Output(i) = (layer1Output * weight).sum() + layer2Bias(i);
+				layer2In(i) = layer2Output(i);
+				layer2Output(i) = sigmoid(layer2Output(i));
+			}
+
+			MatrixXd layer3Output(1, 1);
+			for (int i = 0; i < 1; ++i) {
+				MatrixXd weight = layer3Matrix.row(i).transpose();
+				layer3Output(i) = (layer2Output * weight).sum() + layer3Bias(i);
+				layer3In(i) = layer3Output(i);
+				layer3Output(i) = sigmoid(layer3Output(i));
+			}
+
+			const double error = results[iter] - layer3Output(0);
+
+			cout << error << endl;
+
+			for (int i = 0; i < 1; ++i) {
+				double inVal = layer3In(i);
+				double del_k = error * activation.differential_activate(inVal);
+				layer3Del(i) = del_k;
+
+				for (int k = 0; k < 3; ++k) {
+					layer3Matrix(i, k) += lp * del_k * layer2Output(k);
+				}
+
+				layer3Bias(i) += lp * del_k;
+			}
+
+			for (int i = 0; i < 3; ++i) {
+				double del_in = 0;
+				for (int k = 0; k < 1; ++k) {
+					double layerDel_k = layer3Del(k);
+					double connectionWeight = layer3Matrix(i, k);
+
+					del_in += connectionWeight * layerDel_k;
+				}
+
+				double del_j = del_in * activation.differential_activate(layer2In(i));
+				layer2Del(i) = del_j;
+
+				for (int k = 0; k < 7; ++k) {
+					layer2Matrix(i, k) += lp * del_j * layer1Output(k);
+				}
+
+				layer2Bias(i) += lp * del_j;
+			}
+
+			for (int i = 0; i < 7; ++i) {
+				double del_in = 0;
+				for (int k = 0; k < 3; ++k) {
+					double layerDel_k = layer2Del(k);
+					double connectionWeight = layer2Matrix(i, k);
+
+					del_in += connectionWeight * layerDel_k;
+				}
+
+				double del_j = del_in * activation.differential_activate(layer1In(i));
+				layer1Del(i) = del_j;
+
+				for (int k = 0; k < 4; ++k) {
+					layer1Matrix(i, k) += lp * del_j * data(k);
+				}
+
+				layer1Bias(i) += lp * del_j;
+			}
+		}
+
+	cout << "training end" << endl;
+
+	for (int iter = 0; iter < 6; ++iter) {
+		MatrixXd data = dataset.row(iter);
+
+		MatrixXd layer1Output(1, 7);
+		// layer 1 
+		for (int i = 0; i < 7; ++i) {
+			MatrixXd weight = layer1Matrix.row(i);
+			layer1Output(i) = (data * weight.transpose()).sum() + layer1Bias(i);
+			layer1In(i) = layer1Output(i);
+			layer1Output(i) = sigmoid(layer1Output(i));
+		}
+
+		MatrixXd layer2Output(1, 3);
+		for (int i = 0; i < 3; ++i) {
+			MatrixXd weight = layer2Matrix.row(i).transpose();
+			layer2Output(i) = (layer1Output * weight).sum() + layer2Bias(i);
+			layer2In(i) = layer2Output(i);
+			layer2Output(i) = sigmoid(layer2Output(i));
+		}
+
+		MatrixXd layer3Output(1, 1);
+		for (int i = 0; i < 1; ++i) {
+			MatrixXd weight = layer3Matrix.row(i).transpose();
+			layer3Output(i) = (layer2Output * weight).sum() + layer3Bias(i);
+			layer3In(i) = layer3Output(i);
+			layer3Output(i) = sigmoid(layer3Output(i));
+		}
+
+		cout << round(layer3Output.sum()) << endl;
+	}
+}
+
+//////////////////////////////////////////////
+
+int main() {
+	NetworkLayer hiddenLayer1(4, 7, 0.01); 
+	NetworkLayer hiddenLayer2(7, 3, 0.01);
+	NetworkLayer outputLayer(3, 1, 0.01); 
+
+	MatrixXd dataset(6, 4);
+	dataset << 1, 2, 3, 4,
+		1, 2, 5, 2,
+		1, 6, 3, 2,
+		-1, -2, -3, -4,
+		-5, -4, -10, -39,
+		-2, -20, -3, -5;
+	
+	MatrixXd dataset2(3, 4); 
+	dataset2 << 1, 1, 1, 1,
+		2, 2, 2, 2,
+		-1, -1, -1, -1; 
+
+
+	vector<int> results = {
+		1, 1, 1, 0, 0, 0
+	};
+
+
+	for (int iter = 0; iter < 1000; ++iter)
+	for (int i = 0; i < 6; ++i) {
+		auto o1 = hiddenLayer1.getOutput(dataset.row(i)); 
+		auto o2 = hiddenLayer2.getOutput(o1); 
+		auto o3 = outputLayer.getOutput(o2); 
+		
+		const double error = results[i] - o3.sum(); 
+
+		outputLayer.updateWeights(error, o2); 
+		hiddenLayer2.updateWeights(outputLayer, o1); 
+		hiddenLayer1.updateWeights(hiddenLayer2, dataset.row(i));
+	}
+
+	for (int i = 0; i < 3; ++i) {
+		auto o1 = hiddenLayer1.getOutput(dataset2.row(i));
+		auto o2 = hiddenLayer2.getOutput(o1);
+		auto o3 = outputLayer.getOutput(o2);
+
+		cout << round(o3.sum()) << endl; 
+	}
+
+	return 0; 
+}
