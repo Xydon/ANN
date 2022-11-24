@@ -2,16 +2,14 @@
 #include "Network.h"
 #include "ActivationFunction.h" 
 #include "SigmoidActivation.h"
-#include <utility>
 
-#include <fstream>
 
 constexpr const double lp = 0.3;
 
 SigmoidActivation activation; 
 
 ifstream dataset_file("data_banknote_authentication.txt");	
-ifstream test("test.txt"); 
+ofstream error_file("error.txt"); 
 
 class NetworkLayer {
 public : 
@@ -247,11 +245,57 @@ int main() {
 	auto trainData = dataset.first.first;
 	auto trainResults = dataset.first.second; 
 	
-	int rows = trainResults.rows(); 
+	int rows_train = trainResults.rows(); 
 
-	for (int i = 0; i < rows; ++i) {
+	for (int k = 0; k < 100; ++k) {
+		clock_t startTime = clock(); 
+
+		double err_sum = 0; 
+
+		for (int i = 0; i < rows_train; ++i) {
+			MatrixXd data = trainData.row(i); 
+
+			MatrixXd o1 = first.getOutput(data); 
+			MatrixXd o2 = second.getOutput(o1); 
+			MatrixXd o3 = third.getOutput(o2); 
+			MatrixXd op = output.getOutput(o3); 
+
+			const double error = trainResults(i) - op.sum(); 
+
+			err_sum += abs(error);
+
+			output.updateWeights(error, o3); 
+			third.updateWeights(output, o2); 
+			second.updateWeights(third, o1); 
+			first.updateWeights(second, data); 
+		}
+		error_file << (err_sum / rows_train) << endl; 
+		cout << "COMPLETED EPOCH " << (k + 1) << " in " << (clock() - startTime)/(double)CLOCKS_PER_SEC << " seconds" << endl;
+	}
+
+
+	// testing part 
+	auto testData = dataset.second.first; 
+	auto testResults = dataset.second.second; 
+
+	int rows_test = testResults.rows(); 
+
+	int correct_count = 0; 
+
+	for (int i = 0; i < rows_test; ++i) {
+		MatrixXd data = testData.row(i); 
+
+		MatrixXd o1 = first.getOutput(data);
+		MatrixXd o2 = second.getOutput(o1);
+		MatrixXd o3 = third.getOutput(o2);
+		MatrixXd op = output.getOutput(o3);
+
+		if (round(op.sum()) == testResults(i)) ++correct_count; 
 
 	}
+
+	cout << "accuracy achieved "; 
+	cout << (((double)correct_count / (double)rows_test) * 100) << "%" << endl; 
 
 	return 0; 
 }
