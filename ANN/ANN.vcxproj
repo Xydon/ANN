@@ -164,7 +164,9 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="data_banknote_authentication.txt" />
+    <Text Include="iris.txt" />
     <Text Include="test.txt" />
+    <Text Include="transfusion.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -2,7 +2,7 @@
 #include "Network.h"
 #include "ActivationFunction.h" 
 #include "SigmoidActivation.h"
-
+#include <map>
 
 constexpr const double lp = 0.3;
 
@@ -10,6 +10,8 @@ SigmoidActivation activation;
 
 ifstream dataset_file("data_banknote_authentication.txt");	
 ofstream error_file("error.txt"); 
+ifstream iris_file("iris.txt"); 
+ifstream transfusion_file("transfusion.txt"); 
 
 class NetworkLayer {
 public : 
@@ -56,6 +58,19 @@ public :
 		}
 	}
 
+	void updateWeights(MatrixXd errorVec, MatrixXd input) {
+		for (int i = 0; i < current_layer_size; ++i) {
+			double del_j = errorVec(i) * activation.differential_activate(layerIn(i));
+			layerDel(i) = del_j;
+
+			for (int k = 0; k < previous_layer_size; ++k) {
+				layerMatrix(i, k) += lp * del_j * input(k);
+			}
+
+			layerBias(i) += lp * del_j;
+		}
+	}
+
 	void updateWeights(NetworkLayer frontLayer, MatrixXd input) {
 		for (int i = 0; i < current_layer_size; ++i) {
 			double del_in = 0;
@@ -82,6 +97,78 @@ public :
 	}
 };
 
+class LoaderUtils {
+public : 
+	MatrixXd append(MatrixXd& matrix, MatrixXd data) {
+		matrix.conservativeResize(matrix.rows() + 1, matrix.cols());
+		matrix.row(matrix.rows() - 1) = data;
+		return matrix;
+	}
+
+	pair<MatrixXd, MatrixXd> extractLabel(MatrixXd matrix) {
+		const int row = matrix.rows(), cols = matrix.cols();
+
+		MatrixXd result(matrix.rows(), 1);
+		MatrixXd data(matrix.rows(), matrix.cols() - 1);
+		for (int i = 0; i < matrix.rows(); ++i) {
+			MatrixXd matrixRow = matrix.row(i);
+			result(i) = matrixRow(cols - 1);
+			matrixRow.conservativeResize(1, cols - 1);
+			data.row(i) = matrixRow;
+		}
+
+		return { data, result };
+	}
+
+	void randomize(pair<MatrixXd, MatrixXd> &dataset) {
+		int rows = dataset.first.rows(); 
+		int iter = (double(rows) * 0.8); 
+		for (int i = 0; i < iter; ++i) {
+			int i1 = rand() % rows; 
+			int i2 = rand() % rows; 
+
+			// swapping the rows 
+			MatrixXd temp = dataset.first.row(i1); 
+			dataset.first.row(i1) = dataset.first.row(i2); 
+			dataset.first.row(i2) = temp; 
+
+			// swapping the values in the col 
+			double tempval = dataset.second(i1); 
+			dataset.second(i1) = dataset.second(i2); 
+			dataset.second(i2) = tempval; 
+		}
+	}
+
+	pair<pair<MatrixXd, MatrixXd>, pair<MatrixXd, MatrixXd>> train_test_split(pair<MatrixXd, MatrixXd> dataset) {
+	
+		int col = dataset.first.cols(); 
+		int row = dataset.first.rows(); 
+
+		int trainRow = ((double)row * 0.7); 
+		int testRow = row - trainRow; 
+
+		MatrixXd data = dataset.first, results = dataset.second; 
+
+		MatrixXd trainData(trainRow, col), trainResult(trainRow, 1); 
+		MatrixXd testData(testRow, col), testResult(testRow, 1); 
+
+		for (int i = 0; i < trainRow; ++i) {
+			trainData.row(i) = data.row(i); 
+			trainResult(i) = results(i); 
+		}
+
+		for (int i = trainRow; i < row; ++i) {
+			testData.row(i - trainRow) = data.row(i); 
+			testResult(i - trainRow) = results(i); 
+		}
+
+		return {
+			{trainData, trainResult}, 
+			{testData, testResult}
+		};
+	}
+
+};
 
 class Loader {
 private:
@@ -182,120 +269,390 @@ public :
 	}
 };
 
-void test2() {
-	NetworkLayer hiddenLayer1(4, 7, 0.01);
-	NetworkLayer hiddenLayer2(7, 3, 0.01);
-	NetworkLayer outputLayer(3, 1, 0.01);
 
-	MatrixXd dataset(6, 4);
-	dataset << 1, 2, 3, 4,
-		1, 2, 5, 2,
-		1, 6, 3, 2,
-		-1, -2, -3, -4,
-		-5, -4, -10, -39,
-		-2, -20, -3, -5;
+class BankNotesModel {
+public: 
+	void execute() {
+		Loader dataLoader;
+		auto dataset = dataLoader.train_test_split();
 
-	MatrixXd dataset2(3, 4);
-	dataset2 << 1, 1, 1, 1,
-		2, 2, 2, 2,
-		-1, -1, -1, -1;
+		constexpr const double learning_rate = 0.01;
 
+		// the layers
+		NetworkLayer first(4, 100, learning_rate),
+			second(100, 30, learning_rate),
+			third(30, 5, learning_rate),
+			output(5, 1, learning_rate);
 
-	vector<int> results = {
-		1, 1, 1, 0, 0, 0
-	};
+		// training part 
+		auto trainData = dataset.first.first;
+		auto trainResults = dataset.first.second;
 
+		int rows_train = trainResults.rows();
 
-	for (int iter = 0; iter < 1000; ++iter)
-		for (int i = 0; i < 6; ++i) {
-			auto o1 = hiddenLayer1.getOutput(dataset.row(i));
-			auto o2 = hiddenLayer2.getOutput(o1);
-			auto o3 = outputLayer.getOutput(o2);
+		for (int k = 0; k < 100; ++k) {
+			clock_t startTime = clock();
 
-			const double error = results[i] - o3.sum();
+			double err_sum = 0;
 
-			outputLayer.updateWeights(error, o2);
-			hiddenLayer2.updateWeights(outputLayer, o1);
-			hiddenLayer1.updateWeights(hiddenLayer2, dataset.row(i));
+			for (int i = 0; i < rows_train; ++i) {
+				MatrixXd data = trainData.row(i);
+
+				MatrixXd o1 = first.getOutput(data);
+				MatrixXd o2 = second.getOutput(o1);
+				MatrixXd o3 = third.getOutput(o2);
+				MatrixXd op = output.getOutput(o3);
+
+				const double error = trainResults(i) - op.sum();
+
+				err_sum += abs(error);
+
+				output.updateWeights(error, o3);
+				third.updateWeights(output, o2);
+				second.updateWeights(third, o1);
+				first.updateWeights(second, data);
+			}
+			error_file << (err_sum / rows_train) << endl;
+			cout << "COMPLETED EPOCH " << (k + 1) << " in " << (clock() - startTime) / (double)CLOCKS_PER_SEC << " seconds" << endl;
 		}
 
-	for (int i = 0; i < 3; ++i) {
-		auto o1 = hiddenLayer1.getOutput(dataset2.row(i));
-		auto o2 = hiddenLayer2.getOutput(o1);
-		auto o3 = outputLayer.getOutput(o2);
 
-		// cout << round(o3.sum()) << endl; 
+		// testing part 
+		auto testData = dataset.second.first;
+		auto testResults = dataset.second.second;
+
+		int rows_test = testResults.rows();
+
+		int correct_count = 0;
+
+		for (int i = 0; i < rows_test; ++i) {
+			MatrixXd data = testData.row(i);
+
+			MatrixXd o1 = first.getOutput(data);
+			MatrixXd o2 = second.getOutput(o1);
+			MatrixXd o3 = third.getOutput(o2);
+			MatrixXd op = output.getOutput(o3);
+
+			if (round(op.sum()) == testResults(i)) ++correct_count;
+
+		}
+
+		cout << "accuracy achieved ";
+		cout << (((double)correct_count / (double)rows_test) * 100) << "%" << endl;
+
 	}
-}
+};
 
-int main() {
+class ErrorUtils {
+public : 
+	static MatrixXd classErrorVector(size_t classNumber, size_t classCount) {
+		MatrixXd vec(1, classCount); 
+		vec = MatrixXd::Zero(1, classCount); 
+		vec(classNumber) = 1; 
+		return vec; 
+	}
 
-	Loader dataLoader; 
-	auto dataset = dataLoader.train_test_split(); 
+	static int getIndeOfMax(MatrixXd vec) {
+		
+		MatrixXd copy = vec; 
+		double sum = 0; 
+		for (int i = 0; i < vec.cols(); ++i) {
+			vec(0, i) = exp(vec(0, i)); 
+			sum += vec(0, i); 
+		}
+		vec = vec / sum; 
 
-	constexpr const double learning_rate = 0.01; 
+		int ans = 0;
+		for (int i = 0; i < vec.cols(); ++i) {
+			if (vec(0, i) > vec(0, ans)) {
+				ans = i;
+			}
+		}
+		return ans; 
 
-	// the layers
-	NetworkLayer first(4, 100, learning_rate),
-		second(100, 30, learning_rate),
-		third(30, 5, learning_rate),
-		output(5, 1, learning_rate); 
+	}
+};
 
-	// training part 
-	auto trainData = dataset.first.first;
-	auto trainResults = dataset.first.second; 
+class IrisModel  : public LoaderUtils {
+public :
+	map<string, int> classMap; 
+	vector<string> reverseMap; 
+	int cols = 5; 
 	
-	int rows_train = trainResults.rows(); 
+	IrisModel() {
+		classMap["Iris-setosa"] = 0; 
+		classMap["Iris-versicolor"] = 1; 
+		classMap["Iris-virginica"] = 2; 
 
-	for (int k = 0; k < 100; ++k) {
-		clock_t startTime = clock(); 
+		reverseMap = { "Iris-setosa", "Iris-versicolor", "Iris-virginica" }; 
+	}
 
-		double err_sum = 0; 
+	MatrixXd getMatrix() {
+		MatrixXd dataMatrix(0, 5); 
+		string inp; 
 
-		for (int i = 0; i < rows_train; ++i) {
-			MatrixXd data = trainData.row(i); 
+		while (getline(iris_file, inp)) {
+			MatrixXd dataRow(1, cols); 
+			int currCol = 0; 
+			string val = ""; 
 
-			MatrixXd o1 = first.getOutput(data); 
-			MatrixXd o2 = second.getOutput(o1); 
-			MatrixXd o3 = third.getOutput(o2); 
-			MatrixXd op = output.getOutput(o3); 
+			for (auto ch : inp) {
+				if (ch == ',') {
+					dataRow(currCol) = stod(val); 
+					currCol++; 
+					val = ""; 
+				}
+				else { 
+					val.push_back(ch); 
+				}
+			}
 
-			const double error = trainResults(i) - op.sum(); 
+			dataRow(currCol) = classMap[val]; 
 
-			err_sum += abs(error);
+			append(dataMatrix, dataRow); 
+		}
 
-			output.updateWeights(error, o3); 
-			third.updateWeights(output, o2); 
+		return dataMatrix; 
+	}
+
+	void eval() {
+		pair<MatrixXd, MatrixXd> dataset_raw = extractLabel(getMatrix()); 
+		randomize(dataset_raw); 
+
+		auto dataset = train_test_split(dataset_raw); 
+
+		const double learning_rate = 0.0001;
+
+		NetworkLayer first(4, 100, learning_rate);
+		NetworkLayer second(100, 50, learning_rate);
+		NetworkLayer third(50, 10, learning_rate);
+		NetworkLayer finalLayer(10, 3, learning_rate);
+
+		// training
+		auto trainData = dataset.first.first;
+		auto trainResults = dataset.first.second;
+
+		int train_row_count = trainData.rows();
+
+		for(int k = 0; k < 1000; ++k)
+		for (int i = 0; i < train_row_count; ++i) {
+			auto data = trainData.row(i);
+
+			auto o1 = first.getOutput(data);
+			auto o2 = second.getOutput(o1);
+			auto o3 = third.getOutput(o2);
+			auto op = finalLayer.getOutput(o3);
+
+
+			// calculating error 
+			auto errorVec = ErrorUtils::classErrorVector(trainResults(i), 3) - op;
+
+
+			finalLayer.updateWeights(errorVec, o3); 
+			third.updateWeights(finalLayer, o2); 
 			second.updateWeights(third, o1); 
 			first.updateWeights(second, data); 
 		}
-		error_file << (err_sum / rows_train) << endl; 
-		cout << "COMPLETED EPOCH " << (k + 1) << " in " << (clock() - startTime)/(double)CLOCKS_PER_SEC << " seconds" << endl;
+
+		// testing 
+		auto testData = dataset.second.first; 
+		auto testResults = dataset.second.second; 
+
+		int test_row_count = testData.rows(); 
+
+
+		int correct_count = 0; 
+		for (int i = 0; i < test_row_count; ++i) {
+			auto data = testData.row(i); 
+
+			auto o1 = first.getOutput(data);
+			auto o2 = second.getOutput(o1);
+			auto o3 = third.getOutput(o2);
+			auto op = finalLayer.getOutput(o3);
+
+			if (ErrorUtils::getIndeOfMax(op) == testResults(i)) ++correct_count; 
+		}
+
+		cout << "accuracy obtained --- " << ((correct_count / (double)test_row_count) * 100) << " %" << endl; 
+	}
+};
+
+class TransfusionModel : LoaderUtils {
+public : 
+
+	int cols = 5; 
+
+	MatrixXd getMatrix() {
+		string inp;
+
+		MatrixXd dataMatrix(0, cols);
+
+		if (!transfusion_file) {
+			cout << "failed to open dataset" << endl;
+		}
+
+
+		while (getline(transfusion_file, inp)) {
+			MatrixXd dataRow(1, cols);
+
+			int currCol = 0;
+
+			string val = "";
+
+			for (auto ch : inp) {
+				if (ch == ' ') continue; 
+				if (ch == ',') {
+					dataRow(currCol) = stod(val);
+					currCol++;
+					val = "";
+				}
+				else val.push_back(ch);
+			}
+
+			dataRow(currCol) = stod(val);
+
+			append(dataMatrix, dataRow);
+		}
+
+		
+		return dataMatrix;
+
 	}
 
+	void eval() {
+		auto dataset_raw = extractLabel(getMatrix());
+		// randomize(dataset_raw);
 
-	// testing part 
-	auto testData = dataset.second.first; 
-	auto testResults = dataset.second.second; 
+		auto dataset = train_test_split(dataset_raw);
 
-	int rows_test = testResults.rows(); 
+		const double learning_rate = 0.001;
 
-	int correct_count = 0; 
+		NetworkLayer first(4,25 , learning_rate);
+		NetworkLayer second(25, 10, learning_rate);
+		NetworkLayer third(10, 5, learning_rate);
+		NetworkLayer finalLayer(5, 1, learning_rate);
 
-	for (int i = 0; i < rows_test; ++i) {
-		MatrixXd data = testData.row(i); 
+		// training
+		auto trainData = dataset.first.first;
+		auto trainResults = dataset.first.second;
 
-		MatrixXd o1 = first.getOutput(data);
-		MatrixXd o2 = second.getOutput(o1);
-		MatrixXd o3 = third.getOutput(o2);
-		MatrixXd op = output.getOutput(o3);
+		int train_row_count = trainData.rows();
 
-		if (round(op.sum()) == testResults(i)) ++correct_count; 
+		for (int k = 0; k < 1000; ++k) {
+			double error_sum = 0; 
+			for (int i = 0; i < train_row_count; ++i) {
+				auto data = trainData.row(i);
 
+				auto o1 = first.getOutput(data);
+				auto o2 = second.getOutput(o1);
+				auto o3 = third.getOutput(o2);
+				auto op = finalLayer.getOutput(o3);
+
+
+				// calculating error 
+				double error = trainResults(i) - op.sum();
+
+				error_sum += abs(error); 
+
+				finalLayer.updateWeights(error, o3);
+				third.updateWeights(finalLayer, o2);
+				second.updateWeights(third, o1);
+				first.updateWeights(second, data);
+			}
+			error_file << (error_sum / (double)train_row_count) << endl; 
+		}
+
+		// testing 
+		auto testData = dataset.second.first;
+		auto testResults = dataset.second.second;
+
+		int test_row_count = testData.rows();
+
+
+		int correct_count = 0;
+		for (int i = 0; i < test_row_count; ++i) {
+			auto data = testData.row(i);
+
+			auto o1 = first.getOutput(data);
+			auto o2 = second.getOutput(o1);
+			auto o3 = third.getOutput(o2);
+			auto op = finalLayer.getOutput(o3);
+
+			if (round(op.sum()) == testResults(i)) ++correct_count;
+		}
+
+		cout << "accuracy obtained --- " << ((correct_count / (double)test_row_count) * 100) << " %" << endl;
 	}
 
-	cout << "accuracy achieved "; 
-	cout << (((double)correct_count / (double)rows_test) * 100) << "%" << endl; 
+	void reduceError() {
+		auto dataset_raw = extractLabel(getMatrix());
+		randomize(dataset_raw);
 
+		auto dataset = train_test_split(dataset_raw);
+
+		const double learning_rate = 0.01;
+
+		NetworkLayer first(4, 100, learning_rate); 
+		NetworkLayer second(100, 20, learning_rate); 
+		NetworkLayer finalLayer(20, 1, learning_rate);
+
+		// training
+		auto trainData = dataset.first.first;
+		auto trainResults = dataset.first.second;
+
+		int train_row_count = trainData.rows();
+
+		for (int k = 0; k < 500; ++k) {
+			double error_sum = 0;
+			for (int i = 0; i < train_row_count; ++i) {
+				auto data = trainData.row(i);
+
+				auto o1 = first.getOutput(data);
+				auto o2 = second.getOutput(o1);
+				auto op = finalLayer.getOutput(o2);
+
+
+				// calculating error 
+				double error = trainResults(i) - op.sum();
+
+				error_sum += abs(error);
+
+				finalLayer.updateWeights(error, o2);
+				second.updateWeights(finalLayer, o1); 
+				first.updateWeights(second, data);
+			}
+			error_file << (error_sum / (double)train_row_count) << endl;
+		}
+
+		// testing 
+		auto testData = dataset.second.first;
+		auto testResults = dataset.second.second;
+
+		int test_row_count = testData.rows();
+
+
+		int correct_count = 0;
+		for (int i = 0; i < test_row_count; ++i) {
+			auto data = testData.row(i);
+
+			auto o1 = first.getOutput(data);
+			auto o2 = second.getOutput(o1); 
+			auto op = finalLayer.getOutput(o2);
+
+			if (round(op.sum()) == testResults(i)) ++correct_count;
+		}
+
+		cout << "accuracy obtained --- " << ((correct_count / (double)test_row_count) * 100) << " %" << endl;
+	}
+};
+
+int main() {
+
+	TransfusionModel tModel; 
+
+	//tModel.reduceError();
+	BankNotesModel nModel; 
+	nModel.execute(); 
+	
 	return 0; 
 }

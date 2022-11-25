@@ -79,5 +79,11 @@
     <Text Include="data_banknote_authentication.txt">
       <Filter>Source Files</Filter>
     </Text>
+    <Text Include="iris.txt">
+      <Filter>Source Files</Filter>
+    </Text>
+    <Text Include="transfusion.txt">
+      <Filter>Source Files</Filter>
+    </Text>
   </ItemGroup>
 </Project>
