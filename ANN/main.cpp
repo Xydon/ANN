@@ -121,11 +121,14 @@ public :
 	}
 
 	void randomize(pair<MatrixXd, MatrixXd> &dataset) {
+		srand(time(NULL)); 
 		int rows = dataset.first.rows(); 
-		int iter = (double(rows) * 0.8); 
+		int iter = (double(rows) * 0.8);
+		
 		for (int i = 0; i < iter; ++i) {
 			int i1 = rand() % rows; 
 			int i2 = rand() % rows; 
+
 
 			// swapping the rows 
 			MatrixXd temp = dataset.first.row(i1); 
@@ -218,6 +221,7 @@ public :
 	}
 
 	MatrixXd randomize(MatrixXd matrix) {
+		srand(time(NULL)); 
 		size_t rows = matrix.rows(); 
 		for (int i = 0; i < 1000; ++i) {
 			int i1 = (rand() % rows); 
@@ -434,6 +438,9 @@ public :
 
 		int train_row_count = trainData.rows();
 
+		/*
+			EPOCH COUNT = 1000 
+		*/
 		for(int k = 0; k < 1000; ++k)
 		for (int i = 0; i < train_row_count; ++i) {
 			auto data = trainData.row(i);
@@ -477,7 +484,7 @@ public :
 	}
 };
 
-class TransfusionModel : LoaderUtils {
+class TransfusionModel : public LoaderUtils {
 public : 
 
 	int cols = 5; 
@@ -542,7 +549,6 @@ public :
 			double error_sum = 0; 
 			for (int i = 0; i < train_row_count; ++i) {
 				auto data = trainData.row(i);
-
 				auto o1 = first.getOutput(data);
 				auto o2 = second.getOutput(o1);
 				auto o3 = third.getOutput(o2);
@@ -590,11 +596,11 @@ public :
 
 		auto dataset = train_test_split(dataset_raw);
 
-		const double learning_rate = 0.01;
+		const double learning_rate = 0.001;
 
-		NetworkLayer first(4, 100, learning_rate); 
-		NetworkLayer second(100, 20, learning_rate); 
-		NetworkLayer finalLayer(20, 1, learning_rate);
+		NetworkLayer first(4, 20, learning_rate); 
+		NetworkLayer second(20, 30, learning_rate); 
+		NetworkLayer finalLayer(30, 1, learning_rate);
 
 		// training
 		auto trainData = dataset.first.first;
@@ -602,7 +608,7 @@ public :
 
 		int train_row_count = trainData.rows();
 
-		for (int k = 0; k < 500; ++k) {
+		for (int k = 0; k < 100; ++k) {
 			double error_sum = 0;
 			for (int i = 0; i < train_row_count; ++i) {
 				auto data = trainData.row(i);
@@ -630,7 +636,6 @@ public :
 
 		int test_row_count = testData.rows();
 
-
 		int correct_count = 0;
 		for (int i = 0; i < test_row_count; ++i) {
 			auto data = testData.row(i);
@@ -639,7 +644,7 @@ public :
 			auto o2 = second.getOutput(o1); 
 			auto op = finalLayer.getOutput(o2);
 
-			if (round(op.sum()) == testResults(i)) ++correct_count;
+			if (round(op.sum()) == testResults(i)) ++correct_count; 
 		}
 
 		cout << "accuracy obtained --- " << ((correct_count / (double)test_row_count) * 100) << " %" << endl;
@@ -648,11 +653,8 @@ public :
 
 int main() {
 
-	TransfusionModel tModel; 
-
-	//tModel.reduceError();
-	BankNotesModel nModel; 
-	nModel.execute(); 
+	TransfusionModel model; 
+	model.eval(); 
 	
 	return 0; 
 }
